@@ -20,8 +20,16 @@ void sort_p(int *arr) {
 
 int main() {
     int *arr_s = malloc(sizeof(int) * Num_To_Sort);
-    for (long i = 0; i < Num_To_Sort; i++) {
-        arr_s[i] = rand();
+    long chunk_size = Num_To_Sort / omp_get_max_threads();
+#pragma omp parallel num_threads(omp_get_max_threads())
+    {
+        int p = omp_get_thread_num();
+        unsigned int seed = (unsigned int) time(NULL) + (unsigned int) p;
+        long chunk_start = p * chunk_size;
+        long chunk_end = chunk_start + chunk_size;
+        for (long i = chunk_start; i < chunk_end; i++) {
+            arr_s[i] = rand_r(&seed);
+        }
     }
 
     // Copy the array so that the sorting function can operate on it directly.
