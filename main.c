@@ -1,79 +1,97 @@
-#include <stdlib.h>
 #include <stdio.h>
-#include <omp.h>
-#include <time.h>
-#include <sys/time.h>
-#include <memory.h>
+#include <string.h>
+#include <stdlib.h>
+#include "omp.h"
 
-//static const long Num_To_Sort = 1000000000;
-static const long Num_To_Sort = 100;
+#define MAX_SIZE 100000
 
-// Sequential version of your sort
-// If you're implementing the PSRS algorithm, you may ignore this section
-void sort_s(int *arr, int n) {
-    // implements bubble sort on the array
-    for (int list_length = n; list_length >= 2; list_length--)
-    for (int i = 0; i < list_length-1; i++)
-    if (arr[i] > arr[i+1]) {
-        int tmp = arr[i];
-        arr[i] = arr[i+1];
-        arr[i+1] = tmp;
+//Function for creating an input array||Update accoorind to your need
+void generate_list(int * x, int n) {
+    int i,j,t;
+    for (i = 0; i < n; i++)
+        x[i] = i;
+    for (i = 0; i < n; i++) {
+        j = rand() % n;
+        t = x[i];
+        x[i] = x[j];
+        x[j] = t;
     }
-
 }
 
-// Parallel version of your sort
-void sort_p(int *arr, int n) {
-#pragma omp num_threads(100) {
-    // implements bubble sort on the array
-#pragma omp parallel for
-    for (int list_length = n; list_length >= 2; list_length--)
-#pragma omp parallel for
-        for (int i = 0; i < list_length-1; i++)
-            if (arr[i] > arr[i+1]) {
-                int tmp = arr[i];
-                arr[i] = arr[i+1];
-                arr[i+1] = tmp;
-            }
+void print_list(int * x, int n) {
+    int i;
+    for (i = 0; i < n; i++) {
+        printf("%d ",x[i]);
+    }
 }
 
-int main() {
-    int *arr_s = malloc(sizeof(int) * Num_To_Sort);
-    long chunk_size = Num_To_Sort / omp_get_max_threads();
-#pragma omp parallel num_threads(omp_get_max_threads())
-    {
-        int p = omp_get_thread_num();
-        unsigned int seed = (unsigned int) time(NULL) + (unsigned int) p;
-        long chunk_start = p * chunk_size;
-        long chunk_end = chunk_start + chunk_size;
-        for (long i = chunk_start; i < chunk_end; i++) {
-            arr_s[i] = rand_r(&seed);
+//Merging 2 sorted subarrays into one tmp array
+void merge(int * X, int n, int * tmp) {
+    int i = 0;
+    int j = n/2;
+    int ti = 0;
+    //i will iterate till first  half anf J will iterate for 2nd half of array
+    while (i<n/2 && j<n) {
+        if (X[i] < X[j]) {
+            tmp[ti] = X[i];
+            ti++; i++;
+        } else {
+            tmp[ti] = X[j];
+            ti++;
+            j++;
         }
     }
+    while (i<n/2) { /* finish up lower half */
+        tmp[ti] = X[i];
+        ti++;
+        i++;
+    }
+    while (j<n) { /* finish up upper half */
+        tmp[ti] = X[j];
+        ti++;
+        j++;
+    }
+    //Copy sorted array tmp back to  X (Original array)
+    memcpy(X, tmp, n*sizeof(int));
 
-    // Copy the array so that the sorting function can operate on it directly.
-    // Note that this doubles the memory usage.
-    // You may wish to test with slightly smaller arrays if you're running out of memory.
-    int *arr_p = malloc(sizeof(int) * Num_To_Sort);
-    memcpy(arr_p, arr_s, sizeof(int) * Num_To_Sort);
+} // end of merge()
 
-    struct timeval start, end;
+void mergesort(int * X, int n, int * tmp)
+{
+    if (n < 2) return;
 
-    printf("Timing sequential...\n");
-    gettimeofday(&start, NULL);
-    sort_s(arr_s, Num_To_Sort);
-    gettimeofday(&end, NULL);
-    printf("Took %f seconds\n\n", end.tv_sec - start.tv_sec + (double) (end.tv_usec - start.tv_usec) / 1000000);
+#pragma omp task firstprivate (X, n, tmp)
+    mergesort(X, n/2, tmp);
 
-    free(arr_s);
+#pragma omp task firstprivate (X, n, tmp)
+    mergesort(X+(n/2), n-(n/2), tmp);
 
-    printf("Timing parallel...\n");
-    gettimeofday(&start, NULL);
-    sort_p(arr_p, Num_To_Sort);
-    gettimeofday(&end, NULL);
-    printf("Took %f seconds\n\n", end.tv_sec - start.tv_sec + (double) (end.tv_usec - start.tv_usec) / 1000000);
+    //Wait for both paralel tasks to complete execution
+#pragma omp taskwait
 
-    free(arr_p);
+    /* merge sorted halves into sorted list */
+    merge(X, n, tmp);
+}
 
-    return 0;
+
+int main()
+{
+    int n = 10;
+    double start, stop;
+
+    int data[MAX_SIZE], tmp[MAX_SIZE];
+
+    generate_list(data, n);
+    printf("List Before Sorting...\n");
+    print_list(data, n);
+    start = omp_get_wtime();
+#pragma omp parallel
+    {
+#pragma omp single
+    mergesort(data, n, tmp);
+    }
+    stop = omp_get_wtime();
+    printf("\nList After Sorting...\n");
+    print_list(data, n);
+    printf("\nTime: %g\n",stop-start);
 }
